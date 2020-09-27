@@ -22,7 +22,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"docker_sdk_sample/client"
+	"github.com/pramineni01/docker_sdk_sample/client"
 )
 
 // runCmd represents the run command
