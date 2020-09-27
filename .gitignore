@@ -1,0 +1,7 @@
+!.gitignore
+bin/
+!vendor/
+vendor/*
+!vendor/modules.txt
+docker_sdk_sample
+LICENSE
