@@ -2,41 +2,47 @@ package client
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/stdcopy"
 )
 
+const (
+	imgNamePrefix  = "docker.io/library"
+	dockerUnixSock = "unix:///var/run/docker.sock"
+)
+
+// Interface represents docker client
 type Interface interface {
-	Run(ctx context.Context)
+	Run(timeout int, args []string)
 }
 
 type dockerClient struct {
 }
 
+// New returns docker client interface
 func New() Interface {
-	return &dockerClient
+	return &dockerClient{}
 }
 
-func (dc dockerClient) Run(ctx context.Context, args []string) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	clt, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+func (dc dockerClient) Run(timeout int, args []string) {
+	clt, err := client.NewClient(dockerUnixSock, "", nil, nil)
 	if err != nil {
 		log.Println("Fatal error while creating docker client: ", err)
 		panic(err)
 	}
 
-	reader, err := clt.ImagePull(ctx, args[0])
+	ctx := context.Background()
+	reader, err := clt.ImagePull(ctx, fmt.Sprintf("%s/%s", imgNamePrefix, args[0]), types.ImagePullOptions{})
 	if err != nil {
-		log.Println("Fatal error while pulling docker image: ", err)
+		log.Printf("Fatal error while pulling docker image: %s, err: %s", fmt.Sprintf("%s/%s", imgNamePrefix, args[0]), err)
 		panic(err)
 	}
 
@@ -46,7 +52,7 @@ func (dc dockerClient) Run(ctx context.Context, args []string) {
 		Image: args[0],
 		Cmd:   args[1:],
 		Tty:   false,
-	}, nil, nil, nil, "")
+	}, nil, nil, "")
 	if err != nil {
 		log.Println("Fatal error while creating container instance: ", err)
 		panic(err)
@@ -55,20 +61,17 @@ func (dc dockerClient) Run(ctx context.Context, args []string) {
 	if err := clt.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
 		panic(err)
 	}
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+	defer cancel()
 
-	chStatus, chErr := clt.ContainerWait(ctx, resp.ID)
-	select {
-	case err <- chErr:
-		if err != nil {
-			panic(err)
-		}
-	case <-chStatus:
-	}
-
-	out, err := clt.ContainerLogs(ctx, resp.ID, types.ContainerLogsOptions{ShowStdout: true})
+	code, err := clt.ContainerWait(ctx, resp.ID)
 	if err != nil {
-		panic(err)
+		if strings.Contains(err.Error(), "context deadline exceeded") {
+			log.Println("Exiting as deadline exceeded")
+		} else {
+			log.Printf("Fatal error while wait: statusCode: %d, err: %v\n", code, err)
+		}
+	} else {
+		log.Println("Executed successfully with exit code: ", code)
 	}
-
-	stdcopy.StdCopy(os.Stdout, os.Stderr, out)
 }

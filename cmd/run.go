@@ -16,9 +16,7 @@ limitations under the License.
 package cmd
 
 import (
-	"context"
 	"fmt"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -37,27 +35,20 @@ This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("run called")
-		fmt.Println("Flag passed: ", *killInSecs)
+		fmt.Println("Flag passed: ", *timeout)
 		fmt.Println("Args: ", args)
 
-		var ctx context.Context
-		if *killInSecs > 0 {
-			var cancel context.CancelFunc
-			ctx, cancel = context.WithTimeout(context.TODO(), time.Duration(*killInSecs)*time.Second)
-			defer cancel()
-		}
-
 		// creates and run docker client within context
-		client.New().Run(ctx, args...)
+		client.New().Run(*timeout, args)
 	},
 }
 
-var killInSecs *int
+var timeout *int
 
 func init() {
 	rootCmd.AddCommand(runCmd)
 
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
-	killInSecs = runCmd.Flags().IntP("kill", "k", -1, "kill after specified seconds")
+	timeout = runCmd.Flags().IntP("kill", "k", 0, "Times out in specified seconds")
 }
